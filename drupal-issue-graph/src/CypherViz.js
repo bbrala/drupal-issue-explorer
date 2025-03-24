@@ -140,7 +140,7 @@ class CypherViz extends React.Component {
       const result = await session.run(query);
       const nodes = result.records.map(r => {
         const node = r.get('node');
-        this.processNodeProperties(node);
+        node.properties = this.processNodeProperties(node.properties);
         node.properties.score = r.get('score');
         return node.properties;
       });
@@ -282,8 +282,7 @@ class CypherViz extends React.Component {
 
     let nodes = allNodes.records.map(r => {
       let node = r.get('n');
-      this.processNodeProperties(node);
-      return node.properties;
+      return this.processNodeProperties(node.properties);
     });
 
     this.setState({ data : {nodes, links: []}});
@@ -369,7 +368,7 @@ class CypherViz extends React.Component {
     }).map(r => {
       let node = r.get('n');
       node.properties.distance = r.get('distance').toNumber();
-      this.processNodeProperties(node);
+      node.properties = this.processNodeProperties(node.properties);
 
       if(nodeRelationCounts[node.properties.nid] === undefined) {
         node.properties.targetted = 0;
@@ -399,18 +398,20 @@ class CypherViz extends React.Component {
     this.hideTopBarLoader();
   }
 
-  processNodeProperties(node) {
-    let fieldIssueStatus = node.properties.field_issue_status;
-    node.properties.statusText = ISSUE_STATUSES[fieldIssueStatus];
-    if (node.properties.nid === this.state.rootNodeId) {
-      node.properties.color = '#ff0000';
+  processNodeProperties(properties) {
+    let fieldIssueStatus = properties.field_issue_status;
+    properties.statusText = ISSUE_STATUSES[fieldIssueStatus];
+    if (properties.nid === this.state.rootNodeId) {
+      properties.color = '#ff0000';
     } else {
-      node.properties.color = node.properties.colorOriginal = ISSUE_STATUS_COLORS[fieldIssueStatus];
+      properties.color = properties.colorOriginal = ISSUE_STATUS_COLORS[fieldIssueStatus];
       if (this.hideClosed && this.isStatusClosed(fieldIssueStatus)) {
-        node.properties.color = ISSUE_STATUS_COLORS_RAW[fieldIssueStatus] + HIDDEN_OPACITY;
+        properties.color = ISSUE_STATUS_COLORS_RAW[fieldIssueStatus] + HIDDEN_OPACITY;
       }
     }
-    node.properties.displayTitle = '#' + node.properties.nid + ': ' + node.properties.title + ' (' + node.properties.statusText + ')';
+    properties.displayTitle = '#' + properties.nid + ': ' + properties.title + ' (' + properties.statusText + ')';
+
+    return properties;
   }
 
   isStatusClosed = (field_issue_status) => {
@@ -435,7 +436,11 @@ class CypherViz extends React.Component {
     try {
       const response = await fetch(`https://www.drupal.org/api-d7/node.json?nid=${node.nid}`);
       const data = await response.json();
+      data.list[0] = this.processNodeProperties(data.list[0]);
+
+      node.displayTitle = data.list[0].displayTitle;
       this.setState({
+        selectedNode: node,
         nodeDetails: data,
         isLoading: false
       });

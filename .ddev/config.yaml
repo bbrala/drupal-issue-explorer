@@ -23,20 +23,6 @@ web_extra_exposed_ports:
     container_port: 3000
     http_port: 3001
     https_port: 3000
-#hook:
-#  post-start:
-#    - exec: "yarn install"
-#      description: "Install yarn dependencies"
-#      run_in_container: true
-#      working_dir: "/var/www/html/drupal-issue-graph"
-#    - exec: "yarn run build"
-#      description: "Run yarn build"
-#      run_in_container: true
-#      working_dir: "/var/www/html/drupal-issue-graph"
-#web_extra_daemons:
-#  - name: "react-app"
-#    command: "yarn run build"
-#    directory: /var/www/html/drupal-issue-graph
 
 # Key features of DDEV's config.yaml:
 

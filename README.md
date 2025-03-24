@@ -1,3 +1,7 @@
+The Drupal Issue Explorer is a tool that allows visualization and exploration of Drupal.org issues and their relationships using a graph database.
+
+![screenshot](assets/screenshot.png)
+
 # Getting started
 
 Getting started is quite easy using ddev.
