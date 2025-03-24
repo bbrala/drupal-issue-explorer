@@ -1,0 +1,17 @@
+services:
+  neo4j:
+    container_name: "ddev-${DDEV_SITENAME}-neo4j"
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    image: neo4j
+    expose:
+      - "7474"
+      - "7687"
+    volumes:
+      - ${DDEV_APPROOT}/neo4j-database:/data
+    environment:
+      - NEO4J_AUTH=none
+      - VIRTUAL_HOST=$DDEV_HOSTNAME
+      - HTTP_EXPOSE=7474:7474
+      - HTTPS_EXPOSE=7687:7687

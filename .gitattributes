@@ -1,0 +1,4 @@
+cache.tar.gz filter=lfs diff=lfs merge=lfs -text
+neo4j-database/databases/**/* filter=lfs diff=lfs merge=lfs -text
+neo4j-database/transactions/**/* filter=lfs diff=lfs merge=lfs -text
+neo4j-database/server_id filter=lfs diff=lfs merge=lfs -text
