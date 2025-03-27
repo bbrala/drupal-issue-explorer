@@ -65,8 +65,10 @@ const IssueDetails = ({
             <div
               className={`project-issue-issue-link project-issue-status-info project-issue-status-${
                 (() => {
+                  console.log(nodeDetails);
                   const parentId = nodeDetails.list[0].field_issue_parent.id;
                   const parentNode = data.nodes.find(node => node.nid === parentId);
+                  console.log(parentNode);
                   return parentNode?.field_issue_status || 1; // Default to 1 (active) if not found
                 })()
               }`}
@@ -81,7 +83,11 @@ const IssueDetails = ({
                 const parentId = nodeDetails.list[0].field_issue_parent.id;
                 const parentNode = data.nodes.find(node => node.nid === parentId);
                 return ISSUE_STATUSES[parentNode?.field_issue_status || 1]; // Default to 1 (active) if not found
-              })()}>#{nodeDetails.list[0].field_issue_parent.id}: {nodeDetails.list[0].title}</a>
+              })()}>{(() => {
+                const parentId = nodeDetails.list[0].field_issue_parent.id;
+                const parentNode = data.nodes.find(node => node.nid === parentId);
+                return parentNode.displayTitle;
+              })()}</a>
             </div>
           </div>
         )}
