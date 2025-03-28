@@ -15,3 +15,8 @@ services:
       - VIRTUAL_HOST=$DDEV_HOSTNAME
       - HTTP_EXPOSE=7474:7474
       - HTTPS_EXPOSE=7687:7687
+      - NEO4J_db_tx__log_rotation_size=128K
+      - NEO4J_db_tx__log_rotation_retention__policy=keep_none
+      - NEO4J_db_checkpoint_interval_time=1M
+      - NEO4J_db_recovery_fail__on__missing__files=false
+
