@@ -11,7 +11,7 @@ Getting started is quite easy using ddev.
 3. Run `ddev neo4j-import` to ge the latest data
 4. Run `ddev launch` to open the project in your browser
 
-This will launch the project with a prepopulated Neo4j database and launch the webserver. The data is updated once a week, if you want to update the data.
+This will launch the project with a prepopulated Neo4j database and launch the webserver. The data is updates once in a while white automation is set up.
 
 1. Pull all the changes `git pull`
 2. Start your project `ddev neo4j-import`
