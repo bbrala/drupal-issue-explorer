@@ -55,8 +55,8 @@ export const ISSUE_STATUS_COLORS_RAW = {
 };
 
 export const LINK_COLOURS = {
-  'RELATED': '#0fb',
-  'MENTIONED': '#002aff',
-  'CHILD': '#0f0',
-  'PARENT': 'rgba(0,255,0,0.35)',
+  'RELATED': '#f34663',
+  'MENTIONED': '#2041ef',
+  'CHILD': '#18ba18',
+  'PARENT': '#9e00ec',
 }

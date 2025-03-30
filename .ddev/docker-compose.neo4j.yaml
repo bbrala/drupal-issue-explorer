@@ -9,7 +9,9 @@ services:
       - "7474"
       - "7687"
     volumes:
-      - ${DDEV_APPROOT}/neo4j-database:/data
+#      - ${DDEV_APPROOT}/neo4j-database:/data
+      - ${DDEV_APPROOT}/neo4j-exports:/var/lib/neo4j/import
+      - ".:/mnt/ddev_config:ro"
     environment:
       - NEO4J_AUTH=none
       - VIRTUAL_HOST=$DDEV_HOSTNAME
@@ -19,4 +21,7 @@ services:
       - NEO4J_db_tx__log_rotation_retention__policy=keep_none
       - NEO4J_db_checkpoint_interval_time=1M
       - NEO4J_db_recovery_fail__on__missing__files=false
-
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true

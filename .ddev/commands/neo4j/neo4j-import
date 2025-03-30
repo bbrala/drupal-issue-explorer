@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+## Description: Export neo4j database in Cypher format
+## Usage: neo4j-import
+## Example: ddev neo4j-import
+
+# Optional first argument for filename, default value should be all.cypher
+filename="all.cypher"
+if [[ -n "$1" ]]; then
+  filename="$1"
+fi
+
+# Drop all indexes and constaints
+echo ">>> Dropping all indexes and constraints"
+bin/cypher-shell << 'CYPHER'
+CALL apoc.schema.assert({}, {});
+CYPHER
+
+echo ">>> Dropping all nodes and relationships"
+bin/cypher-shell << 'CYPHER'
+MATCH (n) DETACH DELETE n;
+CYPHER
+
+echo ">>> Importing data from ${filename}"
+cat import/${filename} | bin/cypher-shell
