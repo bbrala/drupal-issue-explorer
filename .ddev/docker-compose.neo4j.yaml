@@ -9,7 +9,6 @@ services:
       - "7474"
       - "7687"
     volumes:
-#      - ${DDEV_APPROOT}/neo4j-database:/data
       - ${DDEV_APPROOT}/neo4j-exports:/var/lib/neo4j/import
       - ".:/mnt/ddev_config:ro"
     environment:
