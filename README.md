@@ -16,3 +16,7 @@ This will launch the project with a prepopulated Neo4j database and launch the w
 1. Pull all the changes `git pull`
 2. Start your project `ddev neo4j-import`
 3. Run `ddev launch` to open the project in your browser
+
+# Data updates
+
+Updates to issues are pushed to this repo every few hours.
