@@ -2,3 +2,4 @@ cache/*
 vendor
 .idea
 drupal-issue-explorer
+neo4j-database/*
