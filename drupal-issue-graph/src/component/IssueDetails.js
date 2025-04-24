@@ -76,7 +76,6 @@ const IssueDetails = ({
               style={{
                 cursor: 'pointer',
                 color: '#0678BE',
-                textDecoration: 'underline'
               }}
             >
               <a title={(() => {
@@ -111,7 +110,6 @@ const IssueDetails = ({
     style={{
       cursor: 'pointer',
       color: '#0678BE',
-      textDecoration: 'underline'
     }}
   >
     <a title={(() => {
