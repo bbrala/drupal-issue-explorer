@@ -60,3 +60,9 @@ export const LINK_COLOURS = {
   'CHILD': '#18ba18',
   'PARENT': '#9e00ec',
 }
+
+export const PROJECTS = {
+  '3060': 'Core',
+  '3437806': 'XB',
+  '3466979': 'Cms'
+}

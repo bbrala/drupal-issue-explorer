@@ -8,7 +8,7 @@ import {
   LINK_COLOURS,
   ISSUE_STATUS_COLORS,
   ISSUE_STATUS_COLORS_RAW,
-  ISSUE_STATUSES, CLOSED_OPACITY, HIDDEN_OPACITY, LINK_OPACITY,
+  ISSUE_STATUSES, CLOSED_OPACITY, HIDDEN_OPACITY, LINK_OPACITY, PROJECTS,
 } from './util/constants';
 import RootNodeInput from './component/RootNodeInput';
 import MaxDistanceInput from './component/MaxDistanceInput';
@@ -50,6 +50,7 @@ class CypherViz extends React.Component {
       nodeDetails: null,
       isLoading: false,
       rootNodeId: "2869792",
+      projectId: "3060",
       maxDistance: 2,
       data: {
         nodes: [],
@@ -73,6 +74,14 @@ class CypherViz extends React.Component {
         WHERE (distance <= {{maxDistance}} AND distance >= 0) OR n.nid = "{{rootNodeId}}"
         RETURN n, distance
         ORDER BY distance ASC
+      `,
+      allNodeForProject: `
+        MATCH (n:Issue {field_project: "{{projectId}}"})
+        RETURN n, 0 as distance;
+      `,
+      allNodesNoFilter: `
+        MATCH (n:Issue)
+        RETURN n, 0 as distance
       `,
       allLinks: `
         MATCH (n)-[r]->(m)  
@@ -290,6 +299,30 @@ class CypherViz extends React.Component {
     this.hideTopBarLoader();
   }
 
+  loadProjectIssueData = async () => {
+    this.showTopBarLoader('Loading issue data for single project...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+
+    let nodeQuery = this.state.allNodeForProject.replaceAll("{{projectId}}", this.state.projectId);
+    // let nodeQuery = this.state.allNodesNoFilter;
+    this.allNodes = await session.run(nodeQuery);
+    this.allLinks = await session.run(this.state.allLinks);
+
+    session.close();
+
+    this.loadIssueData(false);
+
+    this.hideTopBarLoader();
+  }
+
+  handleProjectChange = (event) => {
+    this.setState({ projectId: event.target.value }, () => {
+      this.loadProjectIssueData();
+    });
+  }
+
   loadIssueData = async (loadNewData = true) => {
     if (loadNewData) {
       this.showTopBarLoader('Loading issue data...');
@@ -409,7 +442,7 @@ class CypherViz extends React.Component {
         properties.color = ISSUE_STATUS_COLORS_RAW[fieldIssueStatus] + HIDDEN_OPACITY;
       }
     }
-    properties.displayTitle = '#' + properties.nid + ': ' + properties.title + ' (' + properties.statusText + ')';
+    properties.displayTitle = '#' + properties.nid + ': ' + properties.title + ' (' + properties.statusText + ', ' + PROJECTS[properties.field_project] + ')';
 
     return properties;
   }
@@ -605,7 +638,24 @@ class CypherViz extends React.Component {
           <button
             onClick={this.loadOrphanIssueData}
             className={`toggle-button toggle-active`}
-          >Load orphans</button>
+          >Orphans</button>
+
+          <select
+            value={this.state.projectId}
+            onChange={this.handleProjectChange}
+            className="toggle-button toggle-active"
+            style={{
+              padding: '7px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="" disabled>Show all</option>
+            <option value="">Normal mode</option>
+            {Object.entries(PROJECTS).map(([id, name]) => (
+              <option key={id} value={id}>Show all for {name}</option>
+            ))}
+          </select>
 
           {this.state.data.nodes.length > 0 && (
             <CurrentRootNode
@@ -613,7 +663,6 @@ class CypherViz extends React.Component {
               nodes={this.state.data.nodes}
             />
           )}
-
 
           {/* Loader component */}
           {this.state.topBarLoading && (
