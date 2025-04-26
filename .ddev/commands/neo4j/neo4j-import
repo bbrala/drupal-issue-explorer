@@ -22,4 +22,4 @@ MATCH (n) DETACH DELETE n;
 CYPHER
 
 echo ">>> Importing data from ${filename}"
-cat import/${filename} | bin/cypher-shell
+cat import/${filename} | bin/cypher-shell --format verbose

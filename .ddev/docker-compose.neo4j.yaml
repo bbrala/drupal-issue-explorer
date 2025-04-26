@@ -5,6 +5,7 @@ services:
       com.ddev.site-name: ${DDEV_SITENAME}
       com.ddev.approot: ${DDEV_APPROOT}
     image: neo4j
+    pull_policy: always
     expose:
       - "7474"
       - "7687"
