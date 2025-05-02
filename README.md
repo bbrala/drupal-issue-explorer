@@ -16,3 +16,12 @@ This will launch the project with a prepopulated Neo4j database and launch the w
 1. Pull all the changes `git pull`
 2. Start your project `ddev neo4j-import`
 3. Run `ddev launch` to open the project in your browser
+
+## Features
+
+- Explore issues and their relationships
+- Search for issues with fulltext search
+- Load orphaned issues
+- Issue detail view with working links to other issues
+- Set any node as root of your graph
+- Explode the graph in 2D or 3D

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import logo from './logo.svg';
+import { lazy } from 'react';
 import './App.css';
 import './issue.css';
-import CypherViz from './CypherViz';
-import CypherViz3d from './CypherViz3d';
+const CypherViz = lazy(() => import('./CypherViz'));
+const CypherViz3d = lazy(() => import('./CypherViz3d'));
 
 function App({driver}) {
   const [is3dView, setIs3dView] = useState(false);
