@@ -1,12 +1,48 @@
+import React, { useState } from 'react';
 import logo from './logo.svg';
 import './App.css';
 import './issue.css';
 import CypherViz from './CypherViz';
+import CypherViz3d from './CypherViz3d';
 
 function App({driver}) {
+  const [is3dView, setIs3dView] = useState(false);
+
+  const toggleView = () => {
+    setIs3dView(!is3dView);
+  };
+
   return (
     <div className="App">
-      <CypherViz driver={driver}></CypherViz>
+      <div className="visualization-toggle" style={{
+        position: 'fixed',
+        bottom: '10px',
+        left: '10px',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        background: 'rgba(255, 255, 255, 0.8)',
+        padding: '5px 10px',
+        borderRadius: '4px',
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+      }}>
+        <span style={{ marginRight: '10px', fontWeight: 'bold' }}>2D</span>
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={is3dView}
+            onChange={toggleView}
+          />
+          <span className="slider round"></span>
+        </label>
+        <span style={{ marginLeft: '10px', fontWeight: 'bold' }}>3D</span>
+      </div>
+
+      {is3dView ? (
+        <CypherViz3d driver={driver} />
+      ) : (
+        <CypherViz driver={driver} />
+      )}
     </div>
   );
 }

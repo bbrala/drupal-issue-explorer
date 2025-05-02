@@ -1,6 +1,6 @@
 import React from 'react';
 import './App.css';
-import ForceGraph2D from 'react-force-graph-2d';
+import ForceGraph3D from 'react-force-graph-3d';
 import SearchBar from './component/SearchBar';
 import IssueList from './component/IssueList';
 import IssueDetails from './component/IssueDetails';
@@ -13,10 +13,12 @@ import {
 import RootNodeInput from './component/RootNodeInput';
 import MaxDistanceInput from './component/MaxDistanceInput';
 import CurrentRootNode from './component/CurrentRootNode';
+import * as THREE from 'three';
 
-// Usage: <CypherViz driver={driver}/>
 
-class CypherViz extends React.Component {
+// Usage: <CypherViz3d driver={driver}/>
+
+class CypherViz3d extends React.Component {
   constructor({ driver }) {
     super();
     this.driver = driver;
@@ -30,6 +32,7 @@ class CypherViz extends React.Component {
     const openIssueStatus = Object.keys(ISSUE_STATUSES).filter(status => {
       return this.isStatusClosed(status) === false;
     });
+
 
     this.state = {
       topBarLoading: true,
@@ -253,20 +256,62 @@ class CypherViz extends React.Component {
     });
   }
 
-  paintRing = (node, ctx) => {
-    // console.group('Painting Ring');
-    // console.log(node);
-    // console.log(ctx);
-    // add ring just for highlighted nodes
-    const NODE_R = Math.cbrt(node.targetted) * 5; // Define appropriate node radius constant
-    ctx.beginPath();
-    ctx.arc(node.x, node.y, NODE_R, 0, 2 * Math.PI, false);
-    const opacity = this.isStatusClosed(node.field_issue_status) ?
-      parseInt(CLOSED_OPACITY, 16)/255 : 1;
-    const color = node === this.state.hoverNode ? 'green' : 'orange';
-    ctx.fillStyle = `rgba(${color === 'green' ? '0,128,0' : '255,165,0'},${opacity})`;
-    ctx.fill();
-    // console.groupEnd();
+  nodeThreeObject = (node) => {
+    const size = Math.cbrt(node.targetted || 1) * 3;
+
+    const geometry = new THREE.SphereGeometry(size);
+
+    let nodeMaterial;
+    let opacity = 1;
+
+    if (this.isStatusClosed(node.field_issue_status)) {
+      opacity = parseInt(CLOSED_OPACITY, 16)/255;
+    }
+
+    if (this.state.highlightNodes.has(node)) {
+      nodeMaterial = new THREE.MeshLambertMaterial({
+        color: node === this.state.hoverNode ? 0x00ff00 : 0xffa500,
+        transparent: true,
+        opacity: opacity
+      });
+    } else {
+      const colorHex = node.color.startsWith('#') ?
+        parseInt(node.color.slice(1), 16) :
+        parseInt(node.color, 16);
+
+      nodeMaterial = new THREE.MeshLambertMaterial({
+        color: colorHex,
+        transparent: true,
+        opacity: opacity
+      });
+    }
+
+    const mesh = new THREE.Mesh(geometry, nodeMaterial);
+
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: new THREE.CanvasTexture((() => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 256;
+          canvas.height = 64;
+          const ctx = canvas.getContext('2d');
+          ctx.font = '12px Sans-Serif';
+          ctx.fillStyle = 'white';
+          ctx.textAlign = 'center';
+          ctx.fillText('#' + node.nid, canvas.width / 2, canvas.height / 2);
+          return canvas;
+        })()),
+        transparent: true
+      })
+    );
+    sprite.scale.set(10, 3, 1);
+    sprite.position.y = size + 2;
+
+    const group = new THREE.Group();
+    group.add(mesh);
+    group.add(sprite);
+
+    return group;
   }
 
   handlePopState = (event) => {
@@ -506,8 +551,14 @@ class CypherViz extends React.Component {
 
   highlightNode = (nodeId) => {
     const node = this.state.data.nodes.find(node => node.nid === nodeId);
-    if (node && this.fg) {
-      this.fg.centerAt(node.x, node.y, 1000);
+    if (node && this.graphContainerRef.current) {
+      const distance = 40;
+      const fg = this.graphContainerRef.current;
+      fg.cameraPosition(
+        { x: node.x, y: node.y, z: node.z + distance },
+        node,
+        2000
+      );
       this.onNodeClick(node);
     }
   }
@@ -713,28 +764,30 @@ class CypherViz extends React.Component {
             ref={this.graphContainerRef}
             style={{ flex: '1 1 auto', minWidth: 0 }}
           >
-            <ForceGraph2D
+            <ForceGraph3D
+              ref={this.graphContainerRef}
               width={this.state.graphWidth}
               height={this.state.graphHeight}
               graphData={this.state.data}
               nodeId="nid"
-              linkCurvature={0.1}linkWidth={link => this.state.highlightLinks.has(link) ? 5 : 1}
+              linkCurvature={0}
+              linkWidth={link => this.state.highlightLinks.has(link) ? 4 : 2}
               linkDirectionalParticles={4}
-              linkDirectionalParticleWidth={link => this.state.highlightLinks.has(link) ? 4 : 0}
+              linkDirectionalParticleWidth={link => this.state.highlightLinks.has(link) ? 2 : 0}
               linkDirectionalArrowRelPos={1}
               linkDirectionalArrowLength={5}
+              linkColor={link => link.color}
               onNodeClick={this.onNodeClick}
               onNodeHover={this.handleNodeHover}
               onLinkHover={this.handleLinkHover}
-              nodeCanvasObjectMode={node => this.state.highlightNodes.has(node) ? 'before' : undefined}
-              nodeCanvasObject={(node, ctx, globalScale) => {
-                if (this.state.highlightNodes.has(node)) {
-                  this.paintRing(node, ctx);
-                }
-              }}
-              nodeRelSize={3}
-              nodeVal={node => node.targetted}
+              nodeThreeObject={this.nodeThreeObject}
               nodeLabel={node => node.displayTitle}
+              backgroundColor="#FFF"
+              linkOpacity={0.8}
+              nodeVal={node => node.targetted}
+              enableNodeDrag={false}
+              enableNavigationControls={true}
+              showNavInfo={true}
             />
           </div>
           <IssueList
@@ -837,4 +890,4 @@ class CypherViz extends React.Component {
 
 }
 
-export default CypherViz
+export default CypherViz3d;
