@@ -2,7 +2,7 @@
 
 ## Description: Export neo4j database in Cypher format
 ## Usage: neo4j-import
-## Example: ddev neo4j-import
+## Example: ddev neo4j-import all.cypher
 
 # Optional first argument for filename, default value should be all.cypher
 filename="all.cypher"
