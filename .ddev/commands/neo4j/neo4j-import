@@ -22,4 +22,6 @@ MATCH (n) DETACH DELETE n;
 CYPHER
 
 echo ">>> Importing data from ${filename}"
-cat import/${filename} | bin/cypher-shell --format verbose
+sed -i 's/\xE2\x80\xA8//g' import/${filename}
+
+cat import/${filename} | bin/cypher-shell --format verbose --error-format stacktrace
