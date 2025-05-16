@@ -113,6 +113,14 @@ class CypherViz extends React.Component {
         MATCH (n:Issue {field_project: "{{projectId}}"})
         RETURN n, 0 as distance;
       `,
+      allLinksForProject: `
+        MATCH (n:Issue {field_project: "{{projectId}}"})
+        WITH COLLECT(n.nid) AS nodeIds
+        MATCH (source:Issue)-[r:RELATED|PARENT|MENTIONED|CHILD]->(target:Issue)
+        WHERE source.nid IN nodeIds AND target.nid IN nodeIds
+        RETURN source.nid as source, target.nid as target, type(r) as name,
+          source.field_issue_status as source_status, target.field_issue_status as target_status
+      `,
       allProjectComponents: `
         MATCH (n:Issue) 
         RETURN DISTINCT n.field_project, n.field_issue_component 
@@ -139,6 +147,18 @@ class CypherViz extends React.Component {
         RETURN n, 0 as distance
       `,
       allLinks: `
+        MATCH (n:Issue)
+        OPTIONAL MATCH path = shortestPath((n)-[*1..{{maxDistance}}]->(m:Issue {nid: "{{rootNodeId}}"}))
+        WHERE n <> m
+        WITH n, CASE WHEN path IS NOT NULL THEN length(path) ELSE -1 END AS distance
+        WHERE (distance <= {{maxDistance}} AND distance >= 0) OR n.nid = "{{rootNodeId}}"
+        WITH COLLECT(n.nid) AS nodeIds
+        MATCH (source:Issue)-[r:RELATED|PARENT|MENTIONED|CHILD]->(target:Issue)
+        WHERE source.nid IN nodeIds AND target.nid IN nodeIds
+        RETURN source.nid as source, target.nid as target, type(r) as name,
+          source.field_issue_status as source_status, target.field_issue_status as target_status
+      `,
+      allLinksx: `
         MATCH (n)-[r]->(m)  
         WHERE type(r) IN [
           'RELATED', 
@@ -610,7 +630,7 @@ class CypherViz extends React.Component {
     let nodeQuery = this.state.allNodeForProject.replaceAll("{{projectId}}", this.state.projectId);
     // let nodeQuery = this.state.allNodesNoFilter;
     this.allNodes = await session.run(nodeQuery);
-    this.allLinks = await session.run(this.state.allLinks);
+    this.allLinks = await session.run(this.state.allLinksForProject.replaceAll("{{projectId}}", this.state.projectId));
 
     session.close();
 
@@ -633,7 +653,8 @@ class CypherViz extends React.Component {
 
       let nodeQuery = this.state.allNodes.replaceAll("{{rootNodeId}}", this.state.rootNodeId).replaceAll("{{maxDistance}}", this.state.maxDistance);
       this.allNodes = await session.run(nodeQuery);
-      this.allLinks = await session.run(this.state.allLinks);
+
+      this.allLinks = await session.run(this.state.allLinks.replaceAll("{{rootNodeId}}", this.state.rootNodeId).replaceAll("{{maxDistance}}", this.state.maxDistance));
       session.close();
     }
 

@@ -4,6 +4,11 @@ import ForceGraph3D from 'react-force-graph-3d';
 import SearchBar from './component/SearchBar';
 import IssueList from './component/IssueList';
 import IssueDetails from './component/IssueDetails';
+import StatusSummary from './component/StatusSummary';
+import OrphanStatusModal from './component/OrphanStatusModal';
+import ComponentStatusModal from './component/ComponentStatusModal';
+import MostReferencedModal from './component/MostReferencedModal';
+import MetaIssuesModal from './component/MetaIssuesModal';
 import {
   LINK_COLOURS,
   ISSUE_STATUS_COLORS,
@@ -23,6 +28,7 @@ class CypherViz3d extends React.Component {
     super();
     this.driver = driver;
     this.graphContainerRef = React.createRef(); // Create ref for container
+    this.statsDropdownRef = React.createRef(); // Create ref for stats dropdown
 
     this.allNodes = {};
     this.allLinks = {};
@@ -55,6 +61,16 @@ class CypherViz3d extends React.Component {
       rootNodeId: "2869792",
       projectId: "3060",
       maxDistance: 2,
+      hoveredStatus: null,
+      orphanStatusCounts: [],
+      totalStatusCounts: {},
+      componentCounts: [],
+      showOrphanCountsModal: false,
+      showComponentCountsModal: false,
+      referencedIssues: [],
+      showReferencedIssuesModal: false,
+      metaIssues: [],
+      showMetaIssuesModal: false,
       data: {
         nodes: [],
         links: []
@@ -69,6 +85,24 @@ class CypherViz3d extends React.Component {
         WHERE NOT (n)--()
         RETURN n, 0 as distance;
       `,
+      orphanNodeStatusCounts: `
+        MATCH (n:Issue)
+        WHERE NOT (n)--()
+        RETURN n.field_issue_status as status, count(n) as count
+        ORDER BY count DESC
+      `,
+      totalNodeStatusCounts: `
+        MATCH (n:Issue)
+        RETURN n.field_issue_status as status, count(n) as count
+      `,
+      componentIssuesCounts: `
+        MATCH (n:Issue {field_project: "3060"})
+        WITH n.field_issue_component AS component,
+             count(n) AS count,
+             count(CASE WHEN NOT n.field_issue_status IN ['2', '3', '5', '6', '7', '17', '18'] THEN 1 END) AS openCount
+        RETURN component, count, openCount
+        ORDER BY count DESC
+      `,
       allNodes: `
         MATCH (n:Issue)
         OPTIONAL MATCH path = shortestPath((n)-[*1..{{maxDistance}}]->(m:Issue {nid: "{{rootNodeId}}" }))
@@ -81,6 +115,14 @@ class CypherViz3d extends React.Component {
       allNodeForProject: `
         MATCH (n:Issue {field_project: "{{projectId}}"})
         RETURN n, 0 as distance;
+      `,
+      allLinksForProject: `
+        MATCH (n:Issue {field_project: "{{projectId}}"})
+        WITH COLLECT(n.nid) AS nodeIds
+        MATCH (source:Issue)-[r:RELATED|PARENT|MENTIONED|CHILD]->(target:Issue)
+        WHERE source.nid IN nodeIds AND target.nid IN nodeIds
+        RETURN source.nid as source, target.nid as target, type(r) as name,
+          source.field_issue_status as source_status, target.field_issue_status as target_status
       `,
       allProjectComponents: `
         MATCH (n:Issue) 
@@ -108,6 +150,18 @@ class CypherViz3d extends React.Component {
         RETURN n, 0 as distance
       `,
       allLinks: `
+        MATCH (n:Issue)
+        OPTIONAL MATCH path = shortestPath((n)-[*1..{{maxDistance}}]->(m:Issue {nid: "{{rootNodeId}}"}))
+        WHERE n <> m
+        WITH n, CASE WHEN path IS NOT NULL THEN length(path) ELSE -1 END AS distance
+        WHERE (distance <= {{maxDistance}} AND distance >= 0) OR n.nid = "{{rootNodeId}}"
+        WITH COLLECT(n.nid) AS nodeIds
+        MATCH (source:Issue)-[r:RELATED|PARENT|MENTIONED|CHILD]->(target:Issue)
+        WHERE source.nid IN nodeIds AND target.nid IN nodeIds
+        RETURN source.nid as source, target.nid as target, type(r) as name,
+          source.field_issue_status as source_status, target.field_issue_status as target_status
+      `,
+      allLinksx: `
         MATCH (n)-[r]->(m)  
         WHERE type(r) IN [
           'RELATED', 
@@ -116,6 +170,25 @@ class CypherViz3d extends React.Component {
           'CHILD'
         ]
         RETURN n.nid as source, m.nid as target, type(r) as name, n.field_issue_status as source_status, m.field_issue_status as target_status
+      `,
+      mostReferencedQuery: `
+        MATCH (n:Issue)<-[r]-(m:Issue)
+        WITH n, type(r) as relType, count(r) as relCount
+        WITH n, relType, relCount
+        ORDER BY relCount DESC
+        WITH n.nid as nid, n.title as title, collect({relType: relType, count: relCount}) as relations
+        WITH nid, title, relations, 
+             reduce(total = 0, rel IN relations | total + rel.count) as totalCount
+        RETURN nid, title, relations, totalCount
+        ORDER BY totalCount DESC
+        LIMIT 500
+      `,
+      metaIssuesQuery: `
+        MATCH (n:Issue)
+        WHERE n.title =~ "(?i).*\\[meta\\].*"
+        RETURN n
+        ORDER BY n.changed DESC
+        LIMIT 500
       `,
     }
   }
@@ -231,12 +304,34 @@ class CypherViz3d extends React.Component {
       if (node.links) {
         node.links.forEach(link => highlightLinks.add(link));
       }
+    } else if (this.state.hoveredStatus) {
+      // If no node is hovered but a status is hovered, maintain status highlighting
+      this.highlightNodesByStatus(highlightNodes, highlightLinks);
     }
 
     this.setState({
       highlightNodes,
       highlightLinks,
       hoverNode: node || null
+    });
+  }
+
+  handleStatusHover = (status) => {
+    this.setState({ hoveredStatus: status }, () => {
+      if (!this.state.hoverNode) {
+        // Only update highlights if no node is currently being hovered
+        const highlightNodes = new Set();
+        const highlightLinks = new Set();
+
+        if (status) {
+          this.highlightNodesByStatus(highlightNodes, highlightLinks);
+        }
+
+        this.setState({
+          highlightNodes,
+          highlightLinks
+        });
+      }
     });
   }
 
@@ -253,6 +348,33 @@ class CypherViz3d extends React.Component {
     this.setState({
       highlightNodes,
       highlightLinks
+    });
+  }
+
+  highlightNodesByStatus = (highlightNodes, highlightLinks) => {
+    // Add all nodes with the hovered status to the highlight set
+    this.state.data.nodes.forEach(node => {
+      if (node.field_issue_status === this.state.hoveredStatus) {
+        highlightNodes.add(node);
+
+        // Also highlight links connected to these nodes
+        if (node.links) {
+          node.links.forEach(link => {
+            // Only highlight links where both nodes have the status
+            const sourceNode = typeof link.source === 'object' ? link.source :
+              this.state.data.nodes.find(n => n.nid === link.source);
+            const targetNode = typeof link.target === 'object' ? link.target :
+              this.state.data.nodes.find(n => n.nid === link.target);
+
+            if (sourceNode && targetNode) {
+              if (sourceNode.field_issue_status === this.state.hoveredStatus ||
+                targetNode.field_issue_status === this.state.hoveredStatus) {
+                highlightLinks.add(link);
+              }
+            }
+          });
+        }
+      }
     });
   }
 
@@ -365,6 +487,185 @@ class CypherViz3d extends React.Component {
     this.hideTopBarLoader();
   }
 
+  loadOrphanStatusCounts = async () => {
+    this.showTopBarLoader('Loading orphan status counts...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+    try {
+      // Get orphan counts
+      const orphanResult = await session.run(this.state.orphanNodeStatusCounts);
+      const orphanCounts = orphanResult.records.map(record => ({
+        status: record.get('status'),
+        count: record.get('count').toNumber()
+      }));
+
+      // Get total counts
+      const totalResult = await session.run(this.state.totalNodeStatusCounts);
+      const totalCounts = {};
+      totalResult.records.forEach(record => {
+        const status = record.get('status');
+        const count = record.get('count').toNumber();
+        totalCounts[status] = count;
+      });
+
+      this.setState({
+        orphanStatusCounts: orphanCounts,
+        totalStatusCounts: totalCounts,
+        showOrphanCountsModal: true
+      });
+    } catch (error) {
+      console.error("Error loading status counts:", error);
+    } finally {
+      session.close();
+      this.hideTopBarLoader();
+    }
+  }
+
+  closeOrphanCountsModal = () => {
+    this.setState({ showOrphanCountsModal: false });
+    // Reset dropdown selection
+    if (this.statsDropdownRef.current) {
+      this.statsDropdownRef.current.value = "";
+    }
+  }
+
+  loadComponentCounts = async () => {
+    this.showTopBarLoader('Loading component statistics...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+    try {
+      const result = await session.run(this.state.componentIssuesCounts);
+
+      const counts = result.records.map(record => ({
+        component: record.get('component'),
+        count: record.get('count').toNumber(),
+        openCount: record.get('openCount').toNumber()
+      }));
+
+      this.setState({
+        componentCounts: counts,
+        showComponentCountsModal: true
+      });
+    } catch (error) {
+      console.error("Error loading component counts:", error);
+    } finally {
+      session.close();
+      this.hideTopBarLoader();
+    }
+  }
+
+  closeComponentCountsModal = () => {
+    this.setState({ showComponentCountsModal: false });
+    // Reset dropdown selection
+    if (this.statsDropdownRef.current) {
+      this.statsDropdownRef.current.value = "";
+    }
+  }
+
+  loadMostReferencedIssues = async () => {
+    this.showTopBarLoader('Loading most referenced issues...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+    try {
+      const result = await session.run(this.state.mostReferencedQuery);
+
+      const issues = result.records.map(record => {
+        const nid = record.get('nid');
+        const title = record.get('title');
+        const relations = record.get('relations');
+        const total = record.get('totalCount').toNumber();
+
+        // Create an object for the issue with relation counts
+        const issue = { nid, title, total };
+
+        // Add counts for specific relation types
+        relations.forEach(rel => {
+          issue[rel.relType] = rel.count.toNumber();
+        });
+
+        return issue;
+      });
+
+      this.setState({
+        referencedIssues: issues,
+        showReferencedIssuesModal: true
+      });
+    } catch (error) {
+      console.error("Error loading most referenced issues:", error);
+    } finally {
+      session.close();
+      this.hideTopBarLoader();
+    }
+  }
+
+  closeReferencedIssuesModal = () => {
+    this.setState({ showReferencedIssuesModal: false });
+    // Reset dropdown selection
+    if (this.statsDropdownRef.current) {
+      this.statsDropdownRef.current.value = "";
+    }
+  }
+
+  loadMetaIssues = async () => {
+    this.showTopBarLoader('Loading meta issues...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+    try {
+      const result = await session.run(this.state.metaIssuesQuery);
+
+      const issues = result.records.map(record => {
+        const node = record.get('n');
+        return this.processNodeProperties(node.properties);
+      });
+
+      this.setState({
+        metaIssues: issues,
+        showMetaIssuesModal: true
+      });
+    } catch (error) {
+      console.error("Error loading meta issues:", error);
+    } finally {
+      session.close();
+      this.hideTopBarLoader();
+    }
+  }
+
+  closeMetaIssuesModal = () => {
+    this.setState({ showMetaIssuesModal: false });
+    // Reset dropdown selection
+    if (this.statsDropdownRef.current) {
+      this.statsDropdownRef.current.value = "";
+    }
+  }
+
+  handleOrphanOptionChange = (event) => {
+    const option = event.target.value;
+
+    switch(option) {
+      case 'load':
+        this.loadOrphanIssueData();
+        break;
+      case 'stats':
+        this.loadOrphanStatusCounts();
+        break;
+      case 'components':
+        this.loadComponentCounts();
+        break;
+      case 'referenced':
+        this.loadMostReferencedIssues();
+        break;
+      case 'meta':
+        this.loadMetaIssues();
+        break;
+      default:
+        break;
+    }
+  }
+
   loadProjectIssueData = async () => {
     this.showTopBarLoader('Loading issue data for single project...');
 
@@ -374,7 +675,7 @@ class CypherViz3d extends React.Component {
     let nodeQuery = this.state.allNodeForProject.replaceAll("{{projectId}}", this.state.projectId);
     // let nodeQuery = this.state.allNodesNoFilter;
     this.allNodes = await session.run(nodeQuery);
-    this.allLinks = await session.run(this.state.allLinks);
+    this.allLinks = await session.run(this.state.allLinksForProject.replaceAll("{{projectId}}", this.state.projectId));
 
     session.close();
 
@@ -397,7 +698,8 @@ class CypherViz3d extends React.Component {
 
       let nodeQuery = this.state.allNodes.replaceAll("{{rootNodeId}}", this.state.rootNodeId).replaceAll("{{maxDistance}}", this.state.maxDistance);
       this.allNodes = await session.run(nodeQuery);
-      this.allLinks = await session.run(this.state.allLinks);
+
+      this.allLinks = await session.run(this.state.allLinks.replaceAll("{{rootNodeId}}", this.state.rootNodeId).replaceAll("{{maxDistance}}", this.state.maxDistance));
       session.close();
     }
 
@@ -709,10 +1011,25 @@ class CypherViz3d extends React.Component {
             className={`toggle-button ${this.hideClosed ? 'toggle-inactive' : 'toggle-active'}`}
           >Toggle closed</button>
 
-          <button
-            onClick={this.loadOrphanIssueData}
-            className={`toggle-button toggle-active`}
-          >Orphans</button>
+          {/* Add ref to the dropdown */}
+          <select
+            ref={this.statsDropdownRef}
+            onChange={this.handleOrphanOptionChange}
+            className="toggle-button toggle-active"
+            style={{
+              padding: '7px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            defaultValue=""
+          >
+            <option value="" disabled>Statistics and lists</option>
+            <option value="load">Load orphans</option>
+            <option value="stats">Orphan stats</option>
+            <option value="components">Core component stats</option>
+            <option value="referenced">Most referenced issues</option>
+            <option value="meta">Meta issues</option>
+          </select>
 
           <select
             value={this.state.projectId}
@@ -757,7 +1074,7 @@ class CypherViz3d extends React.Component {
 
         <div style={{
           display: 'flex',
-          height: 'calc(100vh - 70px)',  // Increased from 50px to account for the full top bar height
+          height: 'calc(100vh - 65px)',  // Adjusted to remove status summary height
           overflow: 'hidden'  // Prevent any overflow
         }}>
           <div
@@ -796,6 +1113,25 @@ class CypherViz3d extends React.Component {
             onNodeHover={this.handleNodeHover}
           />
         </div>
+
+        {/* Status Summary Component moved to bottom of screen */}
+        {this.state.data.nodes.length > 0 && (
+          <div style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: '8px 10px',
+            backgroundColor: '#f9f9f9',
+            borderTop: '1px solid #ddd',
+            zIndex: 100
+          }}>
+            <StatusSummary
+              nodes={this.state.data.nodes}
+              onStatusHover={this.handleStatusHover}
+            />
+          </div>
+        )}
 
         {/* Popup Overlay */}
         {(this.state.selectedNode || this.state.searchResults.length > 0) && (
@@ -884,6 +1220,38 @@ class CypherViz3d extends React.Component {
             )}
           </div>
         )}
+
+        {/* Replace the orphan counts modal with the component */}
+        <OrphanStatusModal
+          show={this.state.showOrphanCountsModal}
+          onClose={this.closeOrphanCountsModal}
+          orphanStatusCounts={this.state.orphanStatusCounts}
+          totalStatusCounts={this.state.totalStatusCounts}
+        />
+
+        {/* Add the component counts modal */}
+        <ComponentStatusModal
+          show={this.state.showComponentCountsModal}
+          onClose={this.closeComponentCountsModal}
+          componentCounts={this.state.componentCounts}
+          projectName={PROJECTS["3060"]}
+        />
+
+        {/* Add the most referenced issues modal */}
+        <MostReferencedModal
+          show={this.state.showReferencedIssuesModal}
+          onClose={this.closeReferencedIssuesModal}
+          referencedIssues={this.state.referencedIssues}
+          loadIssueById={this.loadIssueById}
+        />
+
+        {/* Add the meta issues modal */}
+        <MetaIssuesModal
+          show={this.state.showMetaIssuesModal}
+          onClose={this.closeMetaIssuesModal}
+          metaIssues={this.state.metaIssues}
+          loadIssueById={this.loadIssueById}
+        />
       </div>
     );
   }
