@@ -6,6 +6,8 @@ import IssueList from './component/IssueList';
 import IssueDetails from './component/IssueDetails';
 import StatusSummary from './component/StatusSummary';
 import OrphanStatusModal from './component/OrphanStatusModal';
+import ComponentStatusModal from './component/ComponentStatusModal';
+import MostReferencedModal from './component/MostReferencedModal';
 import {
   LINK_COLOURS,
   ISSUE_STATUS_COLORS,
@@ -23,6 +25,7 @@ class CypherViz extends React.Component {
     super();
     this.driver = driver;
     this.graphContainerRef = React.createRef(); // Create ref for container
+    this.statsDropdownRef = React.createRef(); // Create ref for stats dropdown
 
     this.allNodes = {};
     this.allLinks = {};
@@ -57,7 +60,11 @@ class CypherViz extends React.Component {
       hoveredStatus: null,
       orphanStatusCounts: [],
       totalStatusCounts: {},
+      componentCounts: [],
       showOrphanCountsModal: false,
+      showComponentCountsModal: false,
+      referencedIssues: [],
+      showReferencedIssuesModal: false,
       data: {
         nodes: [],
         links: []
@@ -81,6 +88,14 @@ class CypherViz extends React.Component {
       totalNodeStatusCounts: `
         MATCH (n:Issue)
         RETURN n.field_issue_status as status, count(n) as count
+      `,
+      componentIssuesCounts: `
+        MATCH (n:Issue {field_project: "3060"})
+        WITH n.field_issue_component AS component,
+             count(n) AS count,
+             count(CASE WHEN NOT n.field_issue_status IN ['2', '3', '5', '6', '7', '17', '18'] THEN 1 END) AS openCount
+        RETURN component, count, openCount
+        ORDER BY count DESC
       `,
       allNodes: `
         MATCH (n:Issue)
@@ -129,6 +144,18 @@ class CypherViz extends React.Component {
           'CHILD'
         ]
         RETURN n.nid as source, m.nid as target, type(r) as name, n.field_issue_status as source_status, m.field_issue_status as target_status
+      `,
+      mostReferencedQuery: `
+        MATCH (n:Issue)<-[r]-(m:Issue)
+        WITH n, type(r) as relType, count(r) as relCount
+        WITH n, relType, relCount
+        ORDER BY relCount DESC
+        WITH n.nid as nid, n.title as title, collect({relType: relType, count: relCount}) as relations
+        WITH nid, title, relations, 
+             reduce(total = 0, rel IN relations | total + rel.count) as totalCount
+        RETURN nid, title, relations, totalCount
+        ORDER BY totalCount DESC
+        LIMIT 500
       `,
     }
   }
@@ -422,6 +449,110 @@ class CypherViz extends React.Component {
 
   closeOrphanCountsModal = () => {
     this.setState({ showOrphanCountsModal: false });
+    // Reset dropdown selection
+    if (this.statsDropdownRef.current) {
+      this.statsDropdownRef.current.value = "";
+    }
+  }
+
+  loadComponentCounts = async () => {
+    this.showTopBarLoader('Loading component statistics...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+    try {
+      const result = await session.run(this.state.componentIssuesCounts);
+
+      const counts = result.records.map(record => ({
+        component: record.get('component'),
+        count: record.get('count').toNumber(),
+        openCount: record.get('openCount').toNumber()
+      }));
+
+      this.setState({
+        componentCounts: counts,
+        showComponentCountsModal: true
+      });
+    } catch (error) {
+      console.error("Error loading component counts:", error);
+    } finally {
+      session.close();
+      this.hideTopBarLoader();
+    }
+  }
+
+  closeComponentCountsModal = () => {
+    this.setState({ showComponentCountsModal: false });
+    // Reset dropdown selection
+    if (this.statsDropdownRef.current) {
+      this.statsDropdownRef.current.value = "";
+    }
+  }
+
+  loadMostReferencedIssues = async () => {
+    this.showTopBarLoader('Loading most referenced issues...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+    try {
+      const result = await session.run(this.state.mostReferencedQuery);
+
+      const issues = result.records.map(record => {
+        const nid = record.get('nid');
+        const title = record.get('title');
+        const relations = record.get('relations');
+        const total = record.get('totalCount').toNumber();
+
+        // Create an object for the issue with relation counts
+        const issue = { nid, title, total };
+
+        // Add counts for specific relation types
+        relations.forEach(rel => {
+          issue[rel.relType] = rel.count.toNumber();
+        });
+
+        return issue;
+      });
+
+      this.setState({
+        referencedIssues: issues,
+        showReferencedIssuesModal: true
+      });
+    } catch (error) {
+      console.error("Error loading most referenced issues:", error);
+    } finally {
+      session.close();
+      this.hideTopBarLoader();
+    }
+  }
+
+  closeReferencedIssuesModal = () => {
+    this.setState({ showReferencedIssuesModal: false });
+    // Reset dropdown selection
+    if (this.statsDropdownRef.current) {
+      this.statsDropdownRef.current.value = "";
+    }
+  }
+
+  handleOrphanOptionChange = (event) => {
+    const option = event.target.value;
+
+    switch(option) {
+      case 'load':
+        this.loadOrphanIssueData();
+        break;
+      case 'stats':
+        this.loadOrphanStatusCounts();
+        break;
+      case 'components':
+        this.loadComponentCounts();
+        break;
+      case 'referenced':
+        this.loadMostReferencedIssues();
+        break;
+      default:
+        break;
+    }
   }
 
   loadProjectIssueData = async () => {
@@ -446,21 +577,6 @@ class CypherViz extends React.Component {
     this.setState({ projectId: event.target.value }, () => {
       this.loadProjectIssueData();
     });
-  }
-
-  handleOrphanOptionChange = (event) => {
-    const option = event.target.value;
-
-    switch(option) {
-      case 'load':
-        this.loadOrphanIssueData();
-        break;
-      case 'stats':
-        this.loadOrphanStatusCounts();
-        break;
-      default:
-        break;
-    }
   }
 
   loadIssueData = async (loadNewData = true) => {
@@ -747,10 +863,6 @@ class CypherViz extends React.Component {
   }
 
   render() {
-    // Calculate total orphaned and total issues
-    const totalOrphanedIssues = this.state.orphanStatusCounts.reduce((sum, item) => sum + item.count, 0);
-    const totalIssues = Object.values(this.state.totalStatusCounts).reduce((sum, count) => sum + count, 0);
-
     return (
       <div>
         <div style={{
@@ -781,8 +893,9 @@ class CypherViz extends React.Component {
             className={`toggle-button ${this.hideClosed ? 'toggle-inactive' : 'toggle-active'}`}
           >Toggle closed</button>
 
-          {/* Replace the two Orphan buttons with a dropdown */}
+          {/* Add ref to the dropdown */}
           <select
+            ref={this.statsDropdownRef}
             onChange={this.handleOrphanOptionChange}
             className="toggle-button toggle-active"
             style={{
@@ -795,6 +908,8 @@ class CypherViz extends React.Component {
             <option value="" disabled>Statistics and lists</option>
             <option value="load">Load orphans</option>
             <option value="stats">Orphan stats</option>
+            <option value="components">Core component stats</option>
+            <option value="referenced">Most referenced issues</option>
           </select>
 
           <select
@@ -991,6 +1106,22 @@ class CypherViz extends React.Component {
           onClose={this.closeOrphanCountsModal}
           orphanStatusCounts={this.state.orphanStatusCounts}
           totalStatusCounts={this.state.totalStatusCounts}
+        />
+
+        {/* Add the component counts modal */}
+        <ComponentStatusModal
+          show={this.state.showComponentCountsModal}
+          onClose={this.closeComponentCountsModal}
+          componentCounts={this.state.componentCounts}
+          projectName={PROJECTS["3060"]}
+        />
+
+        {/* Add the most referenced issues modal */}
+        <MostReferencedModal
+          show={this.state.showReferencedIssuesModal}
+          onClose={this.closeReferencedIssuesModal}
+          referencedIssues={this.state.referencedIssues}
+          loadIssueById={this.loadIssueById}
         />
       </div>
     );

@@ -85,6 +85,12 @@ const IssueDetails = ({
               })()}>{(() => {
                 const parentId = nodeDetails.list[0].field_issue_parent.id;
                 const parentNode = data.nodes.find(node => node.nid === parentId);
+                if (!parentNode) {
+                  return 'Parent issue not found';
+                }
+                if (!parentNode.displayTitle) {
+                  return 'Parent issue title not available';
+                }
                 return parentNode.displayTitle;
               })()}</a>
             </div>
