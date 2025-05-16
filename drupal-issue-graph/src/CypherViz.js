@@ -4,6 +4,8 @@ import ForceGraph2D from 'react-force-graph-2d';
 import SearchBar from './component/SearchBar';
 import IssueList from './component/IssueList';
 import IssueDetails from './component/IssueDetails';
+import StatusSummary from './component/StatusSummary';
+import OrphanStatusModal from './component/OrphanStatusModal';
 import {
   LINK_COLOURS,
   ISSUE_STATUS_COLORS,
@@ -52,6 +54,10 @@ class CypherViz extends React.Component {
       rootNodeId: "2869792",
       projectId: "3060",
       maxDistance: 2,
+      hoveredStatus: null,
+      orphanStatusCounts: [],
+      totalStatusCounts: {},
+      showOrphanCountsModal: false,
       data: {
         nodes: [],
         links: []
@@ -65,6 +71,16 @@ class CypherViz extends React.Component {
         MATCH (n)
         WHERE NOT (n)--()
         RETURN n, 0 as distance;
+      `,
+      orphanNodeStatusCounts: `
+        MATCH (n:Issue)
+        WHERE NOT (n)--()
+        RETURN n.field_issue_status as status, count(n) as count
+        ORDER BY count DESC
+      `,
+      totalNodeStatusCounts: `
+        MATCH (n:Issue)
+        RETURN n.field_issue_status as status, count(n) as count
       `,
       allNodes: `
         MATCH (n:Issue)
@@ -228,12 +244,34 @@ class CypherViz extends React.Component {
       if (node.links) {
         node.links.forEach(link => highlightLinks.add(link));
       }
+    } else if (this.state.hoveredStatus) {
+      // If no node is hovered but a status is hovered, maintain status highlighting
+      this.highlightNodesByStatus(highlightNodes, highlightLinks);
     }
 
     this.setState({
       highlightNodes,
       highlightLinks,
       hoverNode: node || null
+    });
+  }
+
+  handleStatusHover = (status) => {
+    this.setState({ hoveredStatus: status }, () => {
+      if (!this.state.hoverNode) {
+        // Only update highlights if no node is currently being hovered
+        const highlightNodes = new Set();
+        const highlightLinks = new Set();
+
+        if (status) {
+          this.highlightNodesByStatus(highlightNodes, highlightLinks);
+        }
+
+        this.setState({
+          highlightNodes,
+          highlightLinks
+        });
+      }
     });
   }
 
@@ -250,6 +288,33 @@ class CypherViz extends React.Component {
     this.setState({
       highlightNodes,
       highlightLinks
+    });
+  }
+
+  highlightNodesByStatus = (highlightNodes, highlightLinks) => {
+    // Add all nodes with the hovered status to the highlight set
+    this.state.data.nodes.forEach(node => {
+      if (node.field_issue_status === this.state.hoveredStatus) {
+        highlightNodes.add(node);
+
+        // Also highlight links connected to these nodes
+        if (node.links) {
+          node.links.forEach(link => {
+            // Only highlight links where both nodes have the status
+            const sourceNode = typeof link.source === 'object' ? link.source :
+              this.state.data.nodes.find(n => n.nid === link.source);
+            const targetNode = typeof link.target === 'object' ? link.target :
+              this.state.data.nodes.find(n => n.nid === link.target);
+
+            if (sourceNode && targetNode) {
+              if (sourceNode.field_issue_status === this.state.hoveredStatus ||
+                  targetNode.field_issue_status === this.state.hoveredStatus) {
+                highlightLinks.add(link);
+              }
+            }
+          });
+        }
+      }
     });
   }
 
@@ -320,6 +385,45 @@ class CypherViz extends React.Component {
     this.hideTopBarLoader();
   }
 
+  loadOrphanStatusCounts = async () => {
+    this.showTopBarLoader('Loading orphan status counts...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+    try {
+      // Get orphan counts
+      const orphanResult = await session.run(this.state.orphanNodeStatusCounts);
+      const orphanCounts = orphanResult.records.map(record => ({
+        status: record.get('status'),
+        count: record.get('count').toNumber()
+      }));
+
+      // Get total counts
+      const totalResult = await session.run(this.state.totalNodeStatusCounts);
+      const totalCounts = {};
+      totalResult.records.forEach(record => {
+        const status = record.get('status');
+        const count = record.get('count').toNumber();
+        totalCounts[status] = count;
+      });
+
+      this.setState({
+        orphanStatusCounts: orphanCounts,
+        totalStatusCounts: totalCounts,
+        showOrphanCountsModal: true
+      });
+    } catch (error) {
+      console.error("Error loading status counts:", error);
+    } finally {
+      session.close();
+      this.hideTopBarLoader();
+    }
+  }
+
+  closeOrphanCountsModal = () => {
+    this.setState({ showOrphanCountsModal: false });
+  }
+
   loadProjectIssueData = async () => {
     this.showTopBarLoader('Loading issue data for single project...');
 
@@ -342,6 +446,21 @@ class CypherViz extends React.Component {
     this.setState({ projectId: event.target.value }, () => {
       this.loadProjectIssueData();
     });
+  }
+
+  handleOrphanOptionChange = (event) => {
+    const option = event.target.value;
+
+    switch(option) {
+      case 'load':
+        this.loadOrphanIssueData();
+        break;
+      case 'stats':
+        this.loadOrphanStatusCounts();
+        break;
+      default:
+        break;
+    }
   }
 
   loadIssueData = async (loadNewData = true) => {
@@ -628,6 +747,10 @@ class CypherViz extends React.Component {
   }
 
   render() {
+    // Calculate total orphaned and total issues
+    const totalOrphanedIssues = this.state.orphanStatusCounts.reduce((sum, item) => sum + item.count, 0);
+    const totalIssues = Object.values(this.state.totalStatusCounts).reduce((sum, count) => sum + count, 0);
+
     return (
       <div>
         <div style={{
@@ -658,10 +781,21 @@ class CypherViz extends React.Component {
             className={`toggle-button ${this.hideClosed ? 'toggle-inactive' : 'toggle-active'}`}
           >Toggle closed</button>
 
-          <button
-            onClick={this.loadOrphanIssueData}
-            className={`toggle-button toggle-active`}
-          >Orphans</button>
+          {/* Replace the two Orphan buttons with a dropdown */}
+          <select
+            onChange={this.handleOrphanOptionChange}
+            className="toggle-button toggle-active"
+            style={{
+              padding: '7px 8px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            defaultValue=""
+          >
+            <option value="" disabled>Statistics and lists</option>
+            <option value="load">Load orphans</option>
+            <option value="stats">Orphan stats</option>
+          </select>
 
           <select
             value={this.state.projectId}
@@ -706,7 +840,7 @@ class CypherViz extends React.Component {
 
         <div style={{
           display: 'flex',
-          height: 'calc(100vh - 70px)',  // Increased from 50px to account for the full top bar height
+          height: 'calc(100vh - 65px)',  // Adjusted to remove status summary height
           overflow: 'hidden'  // Prevent any overflow
         }}>
           <div
@@ -743,6 +877,25 @@ class CypherViz extends React.Component {
             onNodeHover={this.handleNodeHover}
           />
         </div>
+
+        {/* Status Summary Component moved to bottom of screen */}
+        {this.state.data.nodes.length > 0 && (
+          <div style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: '8px 10px',
+            backgroundColor: '#f9f9f9',
+            borderTop: '1px solid #ddd',
+            zIndex: 100
+          }}>
+            <StatusSummary
+              nodes={this.state.data.nodes}
+              onStatusHover={this.handleStatusHover}
+            />
+          </div>
+        )}
 
         {/* Popup Overlay */}
         {(this.state.selectedNode || this.state.searchResults.length > 0) && (
@@ -831,6 +984,14 @@ class CypherViz extends React.Component {
             )}
           </div>
         )}
+
+        {/* Replace the orphan counts modal with the component */}
+        <OrphanStatusModal
+          show={this.state.showOrphanCountsModal}
+          onClose={this.closeOrphanCountsModal}
+          orphanStatusCounts={this.state.orphanStatusCounts}
+          totalStatusCounts={this.state.totalStatusCounts}
+        />
       </div>
     );
   }

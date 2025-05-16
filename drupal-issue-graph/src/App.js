@@ -17,7 +17,7 @@ function App({driver}) {
     <div className="App">
       <div className="visualization-toggle" style={{
         position: 'fixed',
-        bottom: '10px',
+        bottom: '60px',
         left: '10px',
         zIndex: 1000,
         display: 'flex',
