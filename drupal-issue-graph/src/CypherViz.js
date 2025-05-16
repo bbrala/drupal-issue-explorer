@@ -8,6 +8,7 @@ import StatusSummary from './component/StatusSummary';
 import OrphanStatusModal from './component/OrphanStatusModal';
 import ComponentStatusModal from './component/ComponentStatusModal';
 import MostReferencedModal from './component/MostReferencedModal';
+import MetaIssuesModal from './component/MetaIssuesModal';
 import {
   LINK_COLOURS,
   ISSUE_STATUS_COLORS,
@@ -65,6 +66,8 @@ class CypherViz extends React.Component {
       showComponentCountsModal: false,
       referencedIssues: [],
       showReferencedIssuesModal: false,
+      metaIssues: [],
+      showMetaIssuesModal: false,
       data: {
         nodes: [],
         links: []
@@ -155,6 +158,13 @@ class CypherViz extends React.Component {
              reduce(total = 0, rel IN relations | total + rel.count) as totalCount
         RETURN nid, title, relations, totalCount
         ORDER BY totalCount DESC
+        LIMIT 500
+      `,
+      metaIssuesQuery: `
+        MATCH (n:Issue)
+        WHERE n.title =~ "(?i).*\\[meta\\].*"
+        RETURN n
+        ORDER BY n.changed DESC
         LIMIT 500
       `,
     }
@@ -534,6 +544,39 @@ class CypherViz extends React.Component {
     }
   }
 
+  loadMetaIssues = async () => {
+    this.showTopBarLoader('Loading meta issues...');
+
+    let session = await this.driver.session({ database: "neo4j" });
+
+    try {
+      const result = await session.run(this.state.metaIssuesQuery);
+
+      const issues = result.records.map(record => {
+        const node = record.get('n');
+        return this.processNodeProperties(node.properties);
+      });
+
+      this.setState({
+        metaIssues: issues,
+        showMetaIssuesModal: true
+      });
+    } catch (error) {
+      console.error("Error loading meta issues:", error);
+    } finally {
+      session.close();
+      this.hideTopBarLoader();
+    }
+  }
+
+  closeMetaIssuesModal = () => {
+    this.setState({ showMetaIssuesModal: false });
+    // Reset dropdown selection
+    if (this.statsDropdownRef.current) {
+      this.statsDropdownRef.current.value = "";
+    }
+  }
+
   handleOrphanOptionChange = (event) => {
     const option = event.target.value;
 
@@ -549,6 +592,9 @@ class CypherViz extends React.Component {
         break;
       case 'referenced':
         this.loadMostReferencedIssues();
+        break;
+      case 'meta':
+        this.loadMetaIssues();
         break;
       default:
         break;
@@ -910,6 +956,7 @@ class CypherViz extends React.Component {
             <option value="stats">Orphan stats</option>
             <option value="components">Core component stats</option>
             <option value="referenced">Most referenced issues</option>
+            <option value="meta">Meta issues</option>
           </select>
 
           <select
@@ -1121,6 +1168,14 @@ class CypherViz extends React.Component {
           show={this.state.showReferencedIssuesModal}
           onClose={this.closeReferencedIssuesModal}
           referencedIssues={this.state.referencedIssues}
+          loadIssueById={this.loadIssueById}
+        />
+
+        {/* Add the meta issues modal */}
+        <MetaIssuesModal
+          show={this.state.showMetaIssuesModal}
+          onClose={this.closeMetaIssuesModal}
+          metaIssues={this.state.metaIssues}
           loadIssueById={this.loadIssueById}
         />
       </div>

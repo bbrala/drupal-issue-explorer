@@ -15,6 +15,40 @@ export const ISSUE_STATUSES = {
   7: 'Closed (fixed)',
 };
 
+export const ISSUE_STATUSES_SHORT = {
+  1: 'Active',
+  13: 'NW',
+  8: 'NR',
+  14: 'RTBC',
+  15: 'Patch',
+  2: 'Fixed',
+  4: 'PP',
+  16: 'PP (MNMI)',
+  3: 'Closed (dupe)',
+  17: 'Closed (outdated)',
+  5: 'Closed (WF)',
+  6: 'Closed (WAD)',
+  18: 'Closed (CR)',
+  7: 'Closed (fixed)',
+};
+
+export const ISSUE_STATUSES_ORDER = [
+  1,
+  13,
+  8,
+  14,
+  15,
+  2,
+  4,
+  16,
+  3,
+  17,
+  5,
+  6,
+  18,
+  7,
+];
+
 export const CLOSED_OPACITY = '25';
 export const HIDDEN_OPACITY = '11';
 export const LINK_OPACITY = '50';
