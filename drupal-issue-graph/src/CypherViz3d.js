@@ -19,7 +19,8 @@ import RootNodeInput from './component/RootNodeInput';
 import MaxDistanceInput from './component/MaxDistanceInput';
 import CurrentRootNode from './component/CurrentRootNode';
 import * as THREE from 'three';
-
+import * as forceManyBodySampled from 'd3-force-sampled';
+import * as forceManyBodyReuse from 'd3-force-reuse';
 
 // Usage: <CypherViz3d driver={driver}/>
 
@@ -1099,6 +1100,9 @@ class CypherViz3d extends React.Component {
               onLinkHover={this.handleLinkHover}
               nodeThreeObject={this.nodeThreeObject}
               nodeLabel={node => node.displayTitle}
+              warmupTicks={1000}
+              cooldownTicks={0}
+              d3Force={forceManyBodyReuse}
               backgroundColor="#FFF"
               linkOpacity={0.8}
               nodeVal={node => node.targetted}

@@ -1043,6 +1043,7 @@ class CypherViz extends React.Component {
               onNodeClick={this.onNodeClick}
               onNodeHover={this.handleNodeHover}
               onLinkHover={this.handleLinkHover}
+              warmupTicks={100}
               nodeCanvasObjectMode={node => this.state.highlightNodes.has(node) ? 'before' : undefined}
               nodeCanvasObject={(node, ctx, globalScale) => {
                 if (this.state.highlightNodes.has(node)) {
