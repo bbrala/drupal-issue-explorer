@@ -1103,7 +1103,7 @@ class CypherViz3d extends React.Component {
               warmupTicks={1000}
               cooldownTicks={0}
               d3Force={forceManyBodyReuse}
-              backgroundColor="#FFF"
+              backgroundColor="#000"
               linkOpacity={0.8}
               nodeVal={node => node.targetted}
               enableNodeDrag={false}
