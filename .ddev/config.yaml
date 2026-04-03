@@ -288,7 +288,3 @@ web_extra_exposed_ports:
 # information on the commands that can be extended and the tasks you can define
 # for them. Example:
 #hooks:
-hooks:
-  post-start:
-    - exec: "cd drupal-issue-graph && yarn install"
-    - exec: "cd drupal-issue-graph && yarn run build"
