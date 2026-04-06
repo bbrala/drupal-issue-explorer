@@ -23,11 +23,6 @@ web_extra_exposed_ports:
     container_port: 3000
     http_port: 3001
     https_port: 3000
-hooks:
-  post-start:
-    - exec: "cd drupal-issue-graph && yarn install"
-    - exec: "cd drupal-issue-graph && yarn run build"
-
 
 # Key features of DDEV's config.yaml:
 
@@ -293,3 +288,7 @@ hooks:
 # information on the commands that can be extended and the tasks you can define
 # for them. Example:
 #hooks:
+hooks:
+  post-start:
+    - exec: "cd drupal-issue-graph && yarn install"
+    - exec: "cd drupal-issue-graph && yarn run build"
